@@ -10,7 +10,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.ClassPathResource;
 
 import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
 @Configuration
@@ -19,32 +21,25 @@ public class FirebaseConfig {
     @Bean
     public Firestore firestore() throws Exception {
         if (FirebaseApp.getApps().isEmpty()) {
-            String base64;
-            String env = System.getenv("FIREBASE_CONFIG");
+            InputStream serviceAccount;
 
-            if (env != null && !env.trim().isEmpty()) {
-                base64 = env.trim();
-                System.out.println("✅ Using FIREBASE_CONFIG from environment");
-            } else {
-                InputStream is = new ClassPathResource("firebase_encoded.txt").getInputStream();
-                byte[] encodedBytes = is.readAllBytes();
-                base64 = new String(encodedBytes).replaceAll("\\s+", "");
-                System.out.println("✅ Using firebase_encoded.txt from resources");
+            // 1️ If running in Heroku (env variable exists)
+            String firebaseEnv = System.getenv("GOOGLE_CREDENTIALS");
+            if (firebaseEnv != null && !firebaseEnv.trim().isEmpty()) {
+                System.out.println(" Using Firebase config from HEROKU environment");
+                serviceAccount = new ByteArrayInputStream(firebaseEnv.getBytes(StandardCharsets.UTF_8));
+            }
+            // 2️ Local fallback (read from JSON file)
+            else {
+                System.out.println(" Using Firebase config from local JSON file");
+                serviceAccount = new FileInputStream("src/main/resources/hostel-booking-6a210-firebase-adminsdk-fbsvc-85c0e30ab3.json");
             }
 
-            try {
-                byte[] decodedBytes = Base64.getDecoder().decode(base64);
-                InputStream serviceAccount = new ByteArrayInputStream(decodedBytes);
+            FirebaseOptions options = new FirebaseOptions.Builder()
+                    .setCredentials(GoogleCredentials.fromStream(serviceAccount))
+                    .build();
 
-                FirebaseOptions options = new FirebaseOptions.Builder()
-                        .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-                        .build();
-
-                FirebaseApp.initializeApp(options);
-            } catch (IllegalArgumentException e) {
-                System.err.println("🚫 Base64 decoding failed: " + e.getMessage());
-                throw new RuntimeException("Base64 decoding failed", e);
-            }
+            FirebaseApp.initializeApp(options);
         }
 
         return FirestoreClient.getFirestore();

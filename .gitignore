@@ -18,7 +18,8 @@ target/
 *.iws
 *.iml
 *.ipr
-
+# Firebase Credentials (keep safe!)
+src/main/resources/*.json
 ### NetBeans ###
 /nbproject/private/
 /nbbuild/
