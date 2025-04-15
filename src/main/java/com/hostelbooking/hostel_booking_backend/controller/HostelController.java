@@ -2,6 +2,8 @@ package com.hostelbooking.hostel_booking_backend.controller;
 
 import com.google.cloud.firestore.*;
 import com.google.firebase.cloud.FirestoreClient;
+import com.hostelbooking.hostel_booking_backend.dto.HostelRegistrationRequest;
+import com.hostelbooking.hostel_booking_backend.dto.LoginRequest;
 import com.hostelbooking.hostel_booking_backend.model.Hostel;
 import com.hostelbooking.hostel_booking_backend.service.HostelService;
 import com.hostelbooking.hostel_booking_backend.service.OtpService;
@@ -164,32 +166,3 @@ public class HostelController {
     }
 }
 
-class HostelRegistrationRequest {
-    private Hostel hostel;
-    private String otp;
-    private String deliveryMethod;
-
-    public Hostel getHostel() { return hostel; }
-    public void setHostel(Hostel hostel) { this.hostel = hostel; }
-    public String getOtp() { return otp; }
-    public void setOtp(String otp) { this.otp = otp; }
-    public String getDeliveryMethod() { return deliveryMethod; }
-    public void setDeliveryMethod(String deliveryMethod) { this.deliveryMethod = deliveryMethod; }
-}
-
-class LoginRequest {
-    private String id;
-    private String phone;
-    private String otp;
-    private String deliveryMethod;
-
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    public String getPhone() { return phone; }
-    public void setPhone(String phone) { this.phone = phone; }
-    public String getOtp() { return otp; }
-    public void setOtp(String otp) { this.otp = otp; }
-    public String getDeliveryMethod() { return deliveryMethod; }
-    public void setDeliveryMethod(String deliveryMethod) { this.deliveryMethod = deliveryMethod; }
-
-}
