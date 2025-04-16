@@ -1,97 +1,84 @@
 package com.hostelbooking.hostel_booking_backend.service;
 
+import com.google.cloud.firestore.Firestore;
+import com.google.firebase.cloud.FirestoreClient;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutionException;
 
 @Service
 public class OtpService {
+    private final Firestore db = FirestoreClient.getFirestore();
 
-    private final Map<String, OtpData> otpStore = new HashMap<>();
-
-    public String generateOtp(String id, String phone) {
+    public String generateOtp(String id, String phone) throws ExecutionException, InterruptedException {
         if (phone == null || phone.isEmpty()) {
             throw new IllegalArgumentException("Phone number is required for OTP generation.");
         }
-        String key = (id != null ? id : "REG") + ":" + phone; // Use "REG" for registration
+        String key = (id != null ? id : "REG") + ":" + phone;
         String otp = String.format("%06d", new Random().nextInt(999999));
-        long expirationTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5);
-        otpStore.put(key, new OtpData(otp, expirationTime));
+        long expirationTime = System.currentTimeMillis() + 300_000; // 5 minutes
+        Map<String, Object> otpData = new HashMap<>();
+        otpData.put("otp", otp);
+        otpData.put("expirationTime", expirationTime);
+        otpData.put("phone", phone);
+        db.collection("otps").document(key).set(otpData).get();
         System.out.println("Generated OTP for " + key + ": " + otp);
         return otp;
     }
 
     public boolean sendOtp(String id, String phone, String email, String otp, String deliveryMethod) {
         String key = (id != null ? id : "REG") + ":" + phone;
-
-        // Default to "mobile" if deliveryMethod is null or invalid
         String effectiveDeliveryMethod = (deliveryMethod != null && "email".equalsIgnoreCase(deliveryMethod)) ? "email" : "mobile";
 
         try {
             if ("mobile".equals(effectiveDeliveryMethod)) {
-                if (phone == null || phone.isEmpty()) {
-                    System.err.println("Failed to send OTP: Phone number is required for mobile delivery.");
-                    return false;
-                }
-                System.out.println("Simulated OTP SMS sent to " + phone + " for " + key + ": " + otp);
+                // For testing, log OTP to console/Firestore
+                System.out.println("Simulated SMS OTP for " + phone + ": " + otp);
+                return true;
             } else if ("email".equals(effectiveDeliveryMethod)) {
                 if (email == null || email.isEmpty()) {
-                    System.err.println("Failed to send OTP: Email is required for email delivery.");
+                    System.err.println("Email is required for email delivery.");
                     return false;
                 }
-                // Placeholder for email sending (e.g., JavaMailSender)
-                System.out.println("Simulated OTP email sent to " + email + " for " + key + ": " + otp);
+                // Simulate email (log to console for free tier)
+                System.out.println("Simulated email OTP to " + email + ": " + otp);
+                return true;
             }
-            return true;
+            return false;
         } catch (Exception e) {
-            System.err.println("Failed to send OTP to " + (effectiveDeliveryMethod.equals("mobile") ? phone : email) + " for " + key + ": " + e.getMessage());
+            System.err.println("Failed to send OTP: " + e.getMessage());
             return false;
         }
     }
 
-    public boolean verifyOtp(String id, String phone, String otp) {
+    public boolean verifyOtp(String id, String phone, String otp) throws ExecutionException, InterruptedException {
         if (phone == null || phone.isEmpty()) {
             System.out.println("Phone number is required for OTP verification.");
             return false;
         }
         String key = (id != null ? id : "REG") + ":" + phone;
-        OtpData otpData = otpStore.get(key);
-        if (otpData == null) {
+        var doc = db.collection("otps").document(key).get().get();
+        if (!doc.exists()) {
             System.out.println("No OTP found for " + key);
             return false;
         }
-        if (System.currentTimeMillis() > otpData.getExpirationTime()) {
-            otpStore.remove(key);
+        Map<String, Object> otpData = doc.getData();
+        String storedOtp = (String) otpData.get("otp");
+        long expirationTime = (long) otpData.get("expirationTime");
+        if (System.currentTimeMillis() > expirationTime) {
+            db.collection("otps").document(key).delete().get();
             System.out.println("OTP expired for " + key);
             return false;
         }
-        if (!otpData.getOtp().equals(otp)) {
-            System.out.println("Invalid OTP for " + key + ": expected " + otpData.getOtp() + ", got " + otp);
+        if (!storedOtp.equals(otp)) {
+            System.out.println("Invalid OTP for " + key + ": expected " + storedOtp + ", got " + otp);
             return false;
         }
-        otpStore.remove(key);
+        db.collection("otps").document(key).delete().get();
         System.out.println("OTP verified successfully for " + key);
         return true;
-    }
-
-    private static class OtpData {
-        private final String otp;
-        private final long expirationTime;
-
-        public OtpData(String otp, long expirationTime) {
-            this.otp = otp;
-            this.expirationTime = expirationTime;
-        }
-
-        public String getOtp() {
-            return otp;
-        }
-
-        public long getExpirationTime() {
-            return expirationTime;
-        }
     }
 }

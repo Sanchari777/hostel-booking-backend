@@ -1,63 +1,83 @@
 package com.hostelbooking.hostel_booking_backend.controller;
 
-import com.google.cloud.firestore.Firestore;
-import com.google.cloud.firestore.QuerySnapshot;
+import com.google.cloud.firestore.*;
 import com.google.firebase.cloud.FirestoreClient;
+import com.hostelbooking.hostel_booking_backend.dto.LoginRequest;
 import com.hostelbooking.hostel_booking_backend.model.User;
+import com.hostelbooking.hostel_booking_backend.service.OtpService;
+import com.hostelbooking.hostel_booking_backend.service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import javax.validation.Valid;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
 @RestController
 @RequestMapping("/api/users")
+@Validated
 public class UserController {
 
     private final Firestore db = FirestoreClient.getFirestore();
+    private final UserService userService;
+    private final OtpService otpService;
+
+    @Autowired
+    public UserController(UserService userService, OtpService otpService) {
+        this.userService = userService;
+        this.otpService = otpService;
+    }
 
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody User user) throws ExecutionException, InterruptedException {
-        // Check if email already exists
-        QuerySnapshot existingEmailUsers = db.collection("users")
-                .whereEqualTo("email", user.getEmail())
-                .get()
-                .get();
-
-        if (!existingEmailUsers.isEmpty()) {
-            return ResponseEntity.badRequest().body("Mail ID is already EXIST.");
+    public ResponseEntity<?> register(@Valid @RequestBody User user) throws ExecutionException, InterruptedException {
+        try {
+            User registeredUser = userService.registerUser(user);
+            return ResponseEntity.ok(registeredUser);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
+    }
 
-        // Check if phone number already exists
-        QuerySnapshot existingPhoneUsers = db.collection("users")
-                .whereEqualTo("phone", user.getPhone())
-                .get()
-                .get();
-
-        if (!existingPhoneUsers.isEmpty()) {
-            return ResponseEntity.badRequest().body("Mobile number is already EXIST.");
+    @PostMapping("/send-login-otp")
+    public ResponseEntity<?> sendUserLoginOtp(@Valid @RequestBody LoginRequest loginRequest) throws ExecutionException, InterruptedException {
+        if (loginRequest.getEmail() == null || loginRequest.getEmail().isEmpty()) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Email is required"));
         }
+        String otp = userService.generateUserOtp(loginRequest.getEmail());
+        String deliveryMethod = loginRequest.getDeliveryMethod() != null ? loginRequest.getDeliveryMethod() : "email";
+        if (otpService.sendOtp(null, null, loginRequest.getEmail(), otp, deliveryMethod)) {
+            return ResponseEntity.ok(new SuccessResponse("OTP sent to " + loginRequest.getEmail()));
+        } else {
+            return ResponseEntity.status(500).body(new ErrorResponse("Failed to send OTP"));
+        }
+    }
 
-        // Generate custom unique ID
-        String customUserId = "USR-" + UUID.randomUUID().toString().substring(0, 8);
-        user.setId(customUserId);
-
-        // Save user to Firestore with custom ID
-        db.collection("users").document(customUserId).set(user).get();
-
-        return ResponseEntity.ok(user);
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) throws ExecutionException, InterruptedException {
+        if (loginRequest.getEmail() == null || loginRequest.getEmail().isEmpty()) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("Email is required"));
+        }
+        if (loginRequest.getOtp() == null || loginRequest.getOtp().isEmpty()) {
+            return ResponseEntity.badRequest().body(new ErrorResponse("OTP is required"));
+        }
+        try {
+            User user = userService.loginUser(loginRequest.getEmail(), loginRequest.getOtp());
+            return ResponseEntity.ok(user);
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        }
     }
 
     @GetMapping
-    public List<User> getAllUsers() throws ExecutionException, InterruptedException {
-        QuerySnapshot query = db.collection("users").get().get();
-        return query.toObjects(User.class);
+    public ResponseEntity<List<User>> getAllUsers() throws ExecutionException, InterruptedException {
+        return ResponseEntity.ok(userService.getAllUsers());
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<User> getUserById(@PathVariable String id) throws ExecutionException, InterruptedException {
-        var doc = db.collection("users").document(id).get().get();
-        return doc.exists() ? ResponseEntity.ok(doc.toObject(User.class)) : ResponseEntity.notFound().build();
+    public ResponseEntity<?> getUserById(@PathVariable String id) throws ExecutionException, InterruptedException {
+        User user = userService.getUserById(id);
+        return user != null ? ResponseEntity.ok(user) : ResponseEntity.status(404).body(new ErrorResponse("User not found"));
     }
 }
