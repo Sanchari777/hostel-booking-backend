@@ -4,9 +4,6 @@ import lombok.Data;
 
 @Data
 public class LoginRequest {
-    private String id;
     private String phone;
-    private String email;
     private String otp;
-    private String deliveryMethod;
 }

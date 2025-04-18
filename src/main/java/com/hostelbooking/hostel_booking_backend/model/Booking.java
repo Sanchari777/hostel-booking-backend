@@ -13,6 +13,7 @@ public class Booking {
     private String id;
     @NotBlank(message = "Hostel ID is required")
     private String hostelId;
+    @NotBlank(message = "User ID is required")
     private String userId;
     @Min(value = 1, message = "At least one bed must be booked")
     private int numberOfBeds;

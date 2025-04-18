@@ -35,7 +35,6 @@ public class OtpService {
 
         try {
             if ("mobile".equals(effectiveDeliveryMethod)) {
-                // For testing, log OTP to console/Firestore
                 System.out.println("Simulated SMS OTP for " + phone + ": " + otp);
                 return true;
             } else if ("email".equals(effectiveDeliveryMethod)) {
@@ -43,7 +42,6 @@ public class OtpService {
                     System.err.println("Email is required for email delivery.");
                     return false;
                 }
-                // Simulate email (log to console for free tier)
                 System.out.println("Simulated email OTP to " + email + ": " + otp);
                 return true;
             }

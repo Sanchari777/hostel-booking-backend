@@ -1,7 +1,5 @@
 package com.hostelbooking.hostel_booking_backend.controller;
 
-import com.google.cloud.firestore.*;
-import com.google.firebase.cloud.FirestoreClient;
 import com.hostelbooking.hostel_booking_backend.dto.LoginRequest;
 import com.hostelbooking.hostel_booking_backend.model.User;
 import com.hostelbooking.hostel_booking_backend.service.OtpService;
@@ -20,52 +18,28 @@ import java.util.concurrent.ExecutionException;
 @Validated
 public class UserController {
 
-    private final Firestore db = FirestoreClient.getFirestore();
-    private final UserService userService;
-    private final OtpService otpService;
+    @Autowired
+    private UserService userService;
 
     @Autowired
-    public UserController(UserService userService, OtpService otpService) {
-        this.userService = userService;
-        this.otpService = otpService;
-    }
+    private OtpService otpService;
 
-    @PostMapping("/register")
-    public ResponseEntity<?> register(@Valid @RequestBody User user) throws ExecutionException, InterruptedException {
+    @PostMapping("/send-otp")
+    public ResponseEntity<?> sendUserOtp(@Valid @RequestBody LoginRequest request) {
         try {
-            User registeredUser = userService.registerUser(user);
-            return ResponseEntity.ok(registeredUser);
-        } catch (RuntimeException e) {
+            String message = userService.sendUserOtp(request.getPhone());
+            return ResponseEntity.ok(new SuccessResponse(message));
+        } catch (Exception e) {
             return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 
-    @PostMapping("/send-login-otp")
-    public ResponseEntity<?> sendUserLoginOtp(@Valid @RequestBody LoginRequest loginRequest) throws ExecutionException, InterruptedException {
-        if (loginRequest.getEmail() == null || loginRequest.getEmail().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Email is required"));
-        }
-        String otp = userService.generateUserOtp(loginRequest.getEmail());
-        String deliveryMethod = loginRequest.getDeliveryMethod() != null ? loginRequest.getDeliveryMethod() : "email";
-        if (otpService.sendOtp(null, null, loginRequest.getEmail(), otp, deliveryMethod)) {
-            return ResponseEntity.ok(new SuccessResponse("OTP sent to " + loginRequest.getEmail()));
-        } else {
-            return ResponseEntity.status(500).body(new ErrorResponse("Failed to send OTP"));
-        }
-    }
-
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) throws ExecutionException, InterruptedException {
-        if (loginRequest.getEmail() == null || loginRequest.getEmail().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Email is required"));
-        }
-        if (loginRequest.getOtp() == null || loginRequest.getOtp().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("OTP is required"));
-        }
+    public ResponseEntity<?> loginUser(@Valid @RequestBody LoginRequest request) {
         try {
-            User user = userService.loginUser(loginRequest.getEmail(), loginRequest.getOtp());
+            User user = userService.loginUser(request.getPhone(), request.getOtp());
             return ResponseEntity.ok(user);
-        } catch (RuntimeException e) {
+        } catch (Exception e) {
             return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
@@ -76,8 +50,12 @@ public class UserController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getUserById(@PathVariable String id) throws ExecutionException, InterruptedException {
-        User user = userService.getUserById(id);
-        return user != null ? ResponseEntity.ok(user) : ResponseEntity.status(404).body(new ErrorResponse("User not found"));
+    public ResponseEntity<?> getUserById(@PathVariable String id) {
+        try {
+            User user = userService.getUserById(id);
+            return ResponseEntity.ok(user);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        }
     }
 }
