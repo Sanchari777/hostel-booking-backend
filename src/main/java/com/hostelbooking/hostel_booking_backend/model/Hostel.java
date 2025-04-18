@@ -22,8 +22,8 @@ public class Hostel {
     private String address;
     @Pattern(regexp = "\\d{6}", message = "Pin code must be 6 digits")
     private String pinCode;
-    private String specification; // Mens, Womens, Co-living
-    private List<String> stayingOptions; // Daily, Weekly, Monthly
+    private String specification;
+    private List<String> stayingOptions;
     @Positive(message = "Price per day must be positive")
     private Double pricePerDay;
     private Double pricePerWeek;

@@ -1,12 +1,7 @@
 package com.hostelbooking.hostel_booking_backend.controller;
 
-import com.google.cloud.firestore.*;
-import com.google.firebase.cloud.FirestoreClient;
-import com.hostelbooking.hostel_booking_backend.dto.HostelRegistrationRequest;
-import com.hostelbooking.hostel_booking_backend.dto.LoginRequest;
 import com.hostelbooking.hostel_booking_backend.model.Hostel;
 import com.hostelbooking.hostel_booking_backend.service.HostelService;
-import com.hostelbooking.hostel_booking_backend.service.OtpService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -14,157 +9,121 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/hostels")
 @Validated
 public class HostelController {
 
-    private final Firestore db = FirestoreClient.getFirestore();
-    private final HostelService hostelService;
-    private final OtpService otpService;
-
     @Autowired
-    public HostelController(HostelService hostelService, OtpService otpService) {
-        this.hostelService = hostelService;
-        this.otpService = otpService;
-    }
+    private HostelService hostelService;
 
     @PostMapping("/send-otp")
-    public ResponseEntity<?> sendOtpForRegistration(@Valid @RequestBody HostelRegistrationRequest request) throws ExecutionException, InterruptedException {
-        Hostel hostel = request.getHostel();
-        if (hostel.getPhone() == null || hostel.getPhone().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Phone number is required"));
-        }
-        if (hostel.getName() == null || hostel.getName().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Hostel name is required"));
-        }
-
-        QuerySnapshot existingPhoneHostel = db.collection("hostels")
-                .whereEqualTo("phone", hostel.getPhone())
-                .get()
-                .get();
-        if (!existingPhoneHostel.isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Phone number already exists"));
-        }
-
-        String deliveryMethod = request.getDeliveryMethod() != null ? request.getDeliveryMethod() : "mobile";
-        String otp = otpService.generateOtp(null, hostel.getPhone());
-        if (otpService.sendOtp(null, hostel.getPhone(), hostel.getEmail(), otp, deliveryMethod)) {
-            return ResponseEntity.ok(new SuccessResponse("OTP sent to " + (deliveryMethod.equalsIgnoreCase("email") ? hostel.getEmail() : hostel.getPhone())));
-        } else {
-            return ResponseEntity.status(500).body(new ErrorResponse("Failed to send OTP"));
+    public ResponseEntity<?> sendHostelOtp(@Valid @RequestBody Map<String, String> request) {
+        try {
+            String phone = request.get("phone");
+            String deliveryMethod = request.get("deliveryMethod");
+            String message = hostelService.sendHostelOtp(phone, deliveryMethod);
+            return ResponseEntity.ok(new SuccessResponse(message));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 
     @PostMapping("/register")
-    public ResponseEntity<?> registerHostel(@Valid @RequestBody HostelRegistrationRequest request) throws ExecutionException, InterruptedException {
-        Hostel hostel = request.getHostel();
-        if (hostel.getName() == null || hostel.getName().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Hostel name is required"));
+    public ResponseEntity<?> registerHostel(@Valid @RequestBody Map<String, Object> request) {
+        try {
+            Hostel hostel = new Hostel();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> hostelData = (Map<String, Object>) request.get("hostel");
+            hostel.setName((String) hostelData.get("name"));
+            hostel.setPhone((String) hostelData.get("phone"));
+            hostel.setEmail((String) hostelData.get("email"));
+            hostel.setOwnerName((String) hostelData.get("ownerName"));
+            hostel.setAddress((String) hostelData.get("address"));
+            hostel.setPinCode((String) hostelData.get("pinCode"));
+            hostel.setSpecification((String) hostelData.get("specification"));
+            hostel.setStayingOptions((List<String>) hostelData.get("stayingOptions"));
+            hostel.setPricePerDay(((Number) hostelData.get("pricePerDay")).doubleValue());
+            hostel.setPricePerWeek(((Number) hostelData.get("pricePerWeek")).doubleValue());
+            hostel.setPricePerMonth(((Number) hostelData.get("pricePerMonth")).doubleValue());
+            hostel.setFacilities((List<String>) hostelData.get("facilities"));
+            hostel.setAvailableRooms(((Number) hostelData.get("availableRooms")).intValue());
+            hostel.setAvailableBeds(((Number) hostelData.get("availableBeds")).intValue());
+            hostel.setImageUrls((List<String>) hostelData.get("imageUrls"));
+            hostel.setRulesAndPolicies((String) hostelData.get("rulesAndPolicies"));
+            String otp = (String) request.get("otp");
+            Hostel registeredHostel = hostelService.registerHostel(hostel, otp);
+            return ResponseEntity.ok(registeredHostel);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
-        if (hostel.getPhone() == null || hostel.getPhone().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Phone number is required"));
-        }
-
-        if (!otpService.verifyOtp(null, hostel.getPhone(), request.getOtp())) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Invalid or expired OTP"));
-        }
-
-        if (hostel.getEmail() != null && !hostel.getEmail().isEmpty()) {
-            QuerySnapshot existingEmailHostel = db.collection("hostels")
-                    .whereEqualTo("email", hostel.getEmail())
-                    .get()
-                    .get();
-            if (!existingEmailHostel.isEmpty()) {
-                return ResponseEntity.badRequest().body(new ErrorResponse("Email already exists"));
-            }
-        }
-
-        Hostel savedHostel = hostelService.addHostel(hostel);
-        return ResponseEntity.ok(savedHostel);
     }
 
     @PostMapping("/send-login-otp")
-    public ResponseEntity<?> sendLoginOtp(@Valid @RequestBody LoginRequest loginRequest) throws ExecutionException, InterruptedException {
-        if (loginRequest.getId() == null || loginRequest.getId().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Hostel ID is required"));
-        }
-        if (loginRequest.getPhone() == null || loginRequest.getPhone().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Phone number is required"));
-        }
-
-        Hostel hostel = hostelService.getHostelById(loginRequest.getId());
-        if (hostel == null) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Hostel ID not found"));
-        }
-        if (!hostel.getPhone().equals(loginRequest.getPhone())) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Phone number does not match hostel ID"));
-        }
-
-        String otp = otpService.generateOtp(loginRequest.getId(), loginRequest.getPhone());
-        String deliveryMethod = loginRequest.getDeliveryMethod() != null ? loginRequest.getDeliveryMethod() : "mobile";
-        if (otpService.sendOtp(loginRequest.getId(), loginRequest.getPhone(), hostel.getEmail(), otp, deliveryMethod)) {
-            return ResponseEntity.ok(new SuccessResponse("OTP sent to " + (deliveryMethod.equalsIgnoreCase("email") ? hostel.getEmail() : loginRequest.getPhone())));
-        } else {
-            return ResponseEntity.status(500).body(new ErrorResponse("Failed to send OTP"));
+    public ResponseEntity<?> sendHostelLoginOtp(@RequestBody Map<String, String> request) {
+        try {
+            String id = request.get("id");
+            String phone = request.get("phone");
+            String deliveryMethod = request.get("deliveryMethod");
+            String message = hostelService.sendHostelLoginOtp(id, phone, deliveryMethod);
+            return ResponseEntity.ok(new SuccessResponse(message));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
     }
 
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) throws ExecutionException, InterruptedException {
-        if (loginRequest.getId() == null || loginRequest.getId().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Hostel ID is required"));
+    public ResponseEntity<?> loginHostel(@RequestBody Map<String, String> request) {
+        try {
+            String id = request.get("id");
+            String phone = request.get("phone");
+            String otp = request.get("otp");
+            Hostel hostel = hostelService.loginHostel(id, phone, otp);
+            return ResponseEntity.ok(hostel);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
         }
-        if (loginRequest.getPhone() == null || loginRequest.getPhone().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Phone number is required"));
-        }
-        if (loginRequest.getOtp() == null || loginRequest.getOtp().isEmpty()) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("OTP is required"));
-        }
-
-        Hostel hostel = hostelService.getHostelById(loginRequest.getId());
-        if (hostel == null) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Hostel ID not found"));
-        }
-        if (!hostel.getPhone().equals(loginRequest.getPhone())) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Phone number does not match hostel ID"));
-        }
-
-        if (!otpService.verifyOtp(loginRequest.getId(), loginRequest.getPhone(), loginRequest.getOtp())) {
-            return ResponseEntity.badRequest().body(new ErrorResponse("Invalid or expired OTP"));
-        }
-
-        return ResponseEntity.ok(new SuccessResponse("Login successful for Hostel ID " + loginRequest.getId()));
-    }
-
-    @GetMapping
-    public ResponseEntity<List<Hostel>> getAllHostels() throws ExecutionException, InterruptedException {
-        return ResponseEntity.ok(hostelService.getAllHostels());
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> updateHostel(@PathVariable String id, @Valid @RequestBody Hostel updatedHostel) throws ExecutionException, InterruptedException {
-        Hostel hostel = hostelService.updateHostel(id, updatedHostel);
-        return hostel != null ? ResponseEntity.ok(hostel) : ResponseEntity.status(404).body(new ErrorResponse("Hostel not found"));
-    }
-
-    @GetMapping("/{id}")
-    public ResponseEntity<?> getHostelById(@PathVariable String id) throws ExecutionException, InterruptedException {
-        Hostel hostel = hostelService.getHostelById(id);
-        return hostel != null ? ResponseEntity.ok(hostel) : ResponseEntity.status(404).body(new ErrorResponse("Hostel not found"));
+    public ResponseEntity<?> updateHostel(@PathVariable String id, @Valid @RequestBody Hostel hostel) {
+        try {
+            Hostel updatedHostel = hostelService.updateHostel(id, hostel);
+            return ResponseEntity.ok(updatedHostel);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        }
     }
 
     @GetMapping("/pending")
-    public ResponseEntity<List<Hostel>> getPendingHostels() throws ExecutionException, InterruptedException {
-        QuerySnapshot query = db.collection("hostels").whereEqualTo("approved", false).get().get();
-        return ResponseEntity.ok(query.toObjects(Hostel.class));
+    public ResponseEntity<List<Hostel>> getPendingHostels() {
+        return ResponseEntity.ok(hostelService.getPendingHostels());
     }
 
     @PutMapping("/{id}/approve")
-    public ResponseEntity<?> approveHostel(@PathVariable String id) throws ExecutionException, InterruptedException {
-        Hostel hostel = hostelService.approveHostel(id);
-        return hostel != null ? ResponseEntity.ok(hostel) : ResponseEntity.status(404).body(new ErrorResponse("Hostel not found"));
+    public ResponseEntity<?> approveHostel(@PathVariable String id) {
+        try {
+            Hostel hostel = hostelService.approveHostel(id);
+            return ResponseEntity.ok(hostel);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getHostelById(@PathVariable String id) {
+        try {
+            Hostel hostel = hostelService.getHostelById(id);
+            return ResponseEntity.ok(hostel);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    @GetMapping
+    public ResponseEntity<List<Hostel>> getHostels() {
+        return ResponseEntity.ok(hostelService.getHostels());
     }
 }
