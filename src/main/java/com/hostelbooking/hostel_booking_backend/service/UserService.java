@@ -54,7 +54,16 @@ public class UserService {
         }
         User user = query.toObjects(User.class).get(0);
         String otp = otpService.generateOtp(user.getId(), phone);
-        otpService.sendOtp(user.getId(), phone, null, otp, "mobile");
+        // --- Added Logging ---
+        System.out.println("Generating OTP for userId: " + user.getId() + ", phone: " + phone + ", otp: " + otp);
+        try {
+            otpService.sendOtp(user.getId(), phone, null, otp, "mobile");
+            System.out.println("OTP sent successfully for phone: " + phone);
+        } catch (Exception e) {
+            System.err.println("Failed to send OTP for phone: " + phone + ", error: " + e.getMessage());
+            throw new RuntimeException("Failed to send OTP: " + e.getMessage());
+        }
+        // --- End Added Logging ---
         return "OTP sent to " + phone;
     }
 
@@ -64,7 +73,12 @@ public class UserService {
             throw new RuntimeException("User not found");
         }
         User user = query.toObjects(User.class).get(0);
-        if (!otpService.verifyOtp(user.getId(), phone, otp)) {
+        // --- Added Logging ---
+        System.out.println("Verifying OTP for userId: " + user.getId() + ", phone: " + phone + ", otp: " + otp);
+        boolean isValidOtp = otpService.verifyOtp(user.getId(), phone, otp);
+        System.out.println("OTP verification result for phone: " + phone + ", valid: " + isValidOtp);
+        // --- End Added Logging ---
+        if (!isValidOtp) {
             throw new RuntimeException("Invalid or expired OTP");
         }
         return user;
